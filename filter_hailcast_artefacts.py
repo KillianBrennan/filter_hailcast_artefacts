@@ -60,8 +60,8 @@ def filter_hailcast_artefacts(inpath, outpath, start_day, end_day):
 
 def apply_filter(
     ds,
-    threshold=5,  # mm/h
-    kernel_size=8,  # km
+    threshold=1,  # mm/h
+    kernel_size=12,  # km
     temporal_ambiguity=2,  # time steps
 ):
     '''
