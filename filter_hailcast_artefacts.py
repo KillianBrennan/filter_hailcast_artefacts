@@ -6,33 +6,23 @@
 filter orographic hailcast artefacts
 
 should work for operational mode, as well as for the climate simulations
-use column integrated graupel (available hourly for climate and weather)
-asuming 100km/h maximaum storm propagation velocity, filter out all hailcast signal that is within 40km of graupel signal above threshold
-take max of cigraupel from hour before and hour after current timestep
 algorithm working principle
+    max over previous and following time steps
     apply threshold
     apply binary dilatation
     apply resulting mask
 ---------------------------------------------------------
 IN
 
-hailcast: xarray dataset
-    hailcast data
-graupel: xarray dataset
-    graupel data
-threshold: float
-    threshold for graupel data
-dilatation: int
-    dilatation for graupel data
 ---------------------------------------------------------
 OUT
 
 ---------------------------------------------------------
 EXAMPLE CALL
-
+python /home/kbrennan/filter_hailcast_artefacts/filter_hailcast_artefacts.py /net/litho/atmosdyn2/kbrennan/data/climate/present/5min_2D/ /net/litho/atmosdyn2/kbrennan/data/climate/present/filtered_hailcast/ 20210101 20220101
 ---------------------------------------------------------
 Killian P. Brennan
-30.04.2024
+14.05.2024
 ---------------------------------------------------------
 
 """
@@ -48,62 +38,114 @@ import scipy.ndimage as ndimage
 from skimage.morphology import disk
 
 
-def filter_hailcast_artefacts(hailcast, graupel, threshold=0.1, dilatation=40):
-    # remove haicast data smaller than 10.1mm
-    hailcast = hailcast.where(hailcast > 10.1, 0)
-    hailcast_filtered = xr.Dataset()
+def filter_hailcast_artefacts(inpath, outpath, start_day, end_day):
+    start_day = pd.to_datetime(start_day, format="%Y%m%d")
+    end_day = pd.to_datetime(end_day, format="%Y%m%d")
 
-    for t in range(0, len(hailcast.time) + 1):
-        if t == 0:
-            # get graupel data from hour after
-            graupel_t = graupel.isel(time=slice(t, t + 2)).max(dim="time")
-        elif t == len(hailcast.time):
-            # get graupel data from hour before
-            graupel_t = graupel.isel(time=slice(t - 1, t + 1)).max(dim="time")
-        else:
-            # get graupel data from hour before and after
-            graupel_t = graupel.isel(time=slice(t - 1, t + 2)).max(dim="time")
+    daylist = pd.date_range(start_day, end_day)
 
-        # apply threshold
-        graupel_t = graupel_t.where(graupel_t > threshold, 0)
+    # make output directory
+    os.makedirs(outpath, exist_ok=True)
 
-        # apply binary dilatation
-        structure = disk(dilatation)
-        graupel_t_dilated = ndimage.binary_dilation(graupel_t, structure=structure)
+    for day in daylist:
+        day_str = day.strftime("%Y%m%d")
+        print(day_str)
+        original = xr.open_dataset(os.path.join(inpath,'lffd'+day_str+'_0606.nz'))
+        filtered = apply_filter(original)
 
-        # apply resulting mask
-        hailcast_t = hailcast.isel(time=t)
-        hailcast_t_filtered = hailcast_t.where(graupel_t_dilated, 0)
+        filtered.DHAIL_MX.to_netcdf(os.path.join(outpath, 'lffd'+day_str+'_0606.nc'))
 
-        hailcast_filtered = xr.concat([hailcast_filtered, hailcast_t_filtered], dim="time")
-
-    return hailcast_filtered
+    return
 
 
-def main(args):
+def apply_filter(
+    ds,
+    threshold=5,  # mm/h
+    kernel_size=8,  # km
+    temporal_ambiguity=2,  # time steps
+):
+    '''
+    Filter out hailcast artefacts using a threshold and a binary dilatation
+    Parameters
+    ----------
+    ds : xarray dataset
+    hailcast data
+    threshold : float
+    threshold for hailcast data
+    kernel_size : int
+    kernel size for binary dilatation
+    temporal_ambiguity : int
+    number of time steps to consider before and after current time step
 
-    # load data
-    hailcast = xr.open_dataset(args.hailcast)
-    graupel = xr.open_dataset(args.graupel)
+    Returns
+    -------
+    ds : xarray dataset
+    hailcast data with artefacts removed
+        
+        '''
 
-    # filter artefacts
-    hailcast_filtered = filter_hailcast_artefacts(
-        hailcast, graupel, args.threshold, args.dilatation
-    )
+    ds["DHAIL_MX_filtered"] = ds["DHAIL_MX"]
 
-    # save data
-    hailcast_filtered.to_netcdf(args.output)
+    # get dt from df.time
+    # dt = pd.to_timedelta(ds.time.diff(dim="time").mean().values).total_seconds() / 3600
+    dt = 1 / 12  # 5 min
+
+    # get grid spacing from df.lat
+    r_earth = 6371  # km
+    lat = ds.lat.values
+    dlat = np.abs(lat[1] - lat[0])
+    dx = r_earth * np.radians(dlat)
+    # get grid spacing in km
+    dx = dx.mean()
+    kernel_size = int(np.round(kernel_size / dx))
+    kernel = disk(kernel_size)
+
+    mask = xr.full_like(ds.TOT_PREC, False)
+
+    for i in range(len(ds.time)):
+        start = i - temporal_ambiguity
+        end = i + temporal_ambiguity + 1
+        # make sure the start and end indices are within the time dimension
+        if start < 0:
+            start = 0
+        if end > len(ds.time):
+            end = len(ds.time)
+        rr = ds.TOT_PREC.isel(time=slice(start, end)).max(dim="time")
+        rr = rr / dt
+        m = rr > threshold
+        m = ndimage.binary_dilation(m, structure=kernel)
+        mask[i] = m.copy()
+
+    ds["DHAIL_MX_filtered"] = ds["DHAIL_MX"].where(mask, 0)
+
+    return ds
 
 
 if __name__ == "__main__":
 
     parser = ArgumentParser(description="filter orographic hailcast artefacts")
-    parser.add_argument("--hailcast", type=str, help="path to hailcast data")
-    parser.add_argument("--graupel", type=str, help="path to graupel data")
-    parser.add_argument("--threshold", type=float, help="threshold for hailcast data")
-    parser.add_argument("--dilatation", type=int, help="dilatation for hailcast data")
-    parser.add_argument("--output", type=str, help="path to output data")
+
+    parser.add_argument(
+        'inpath',
+        type=str,
+        help='path to the input directory'
+    )
+    parser.add_argument(
+        'outpath',
+        type=str,
+        help='path to the output directory'
+    )
+    parser.add_argument(
+        'start_day',
+        type=str,
+        help='start day in format YYYYMMDD'
+    )
+    parser.add_argument(
+        'end_day',
+        type=str,
+        help='end day in format YYYYMMDD'
+    )
 
     args = parser.parse_args()
 
-    main(args)
+    filter_hailcast_artefacts(args.inpath, args.outpath, args.start_day, args.end_day)
