@@ -8,7 +8,7 @@ import xarray as xr
 def main():
     root_path = "/home/kbrennan/phd/data/climate/present"
     footprint_path = os.path.join(root_path, "hail_footprints")
-    horizontal_path = os.path.join(root_path, "1h_2D")
+    horizontal_path = os.path.join(root_path, "5min_2D")
     const_path = os.path.join(root_path, "lffd20101019000000c.nc")
     const = xr.open_dataset(const_path)
 
@@ -18,6 +18,7 @@ def main():
     footprint_files = [f for f in footprint_files if f.endswith(".nc")]
     # only the ones that start with ffd2021
     footprint_files = [f for f in footprint_files if f.startswith("lffd2021")]
+    footprint_files = footprint_files[-20:]
     plotdir = os.path.join(root_path, "plots", "potential_artefacts")
     if not os.path.exists(plotdir):
         os.makedirs(plotdir)
@@ -27,19 +28,23 @@ def main():
         print(day)
         footprint = xr.open_dataset(os.path.join(footprint_path, f))
 
-        horizontal = xr.open_mfdataset(
-            os.path.join(horizontal_path, "*" + day + "*.nc")
-        )
+        try:
+            horizontal = xr.open_mfdataset(
+                os.path.join(horizontal_path, "*" + day + "*.nz")
+            )
+        except:
+            print("No file found for " + day)
+            continue
 
         # plot
         fig, ax = plt.subplots(1, 1, figsize=(12, 8))
         pmesh = ax.pcolormesh(
             horizontal.lon,
             horizontal.lat,
-            horizontal.TQG.max(dim="time"),
-            vmax=5,
+            horizontal.TOT_PREC.max(dim="time")*60/5,
+            vmax=20,
             vmin=0,
-            cmap="Purples",
+            cmap="Blues",
         )
         ax.contour(
             const.lon,
@@ -58,7 +63,7 @@ def main():
         )
         # add colorbar
         cbar = fig.colorbar(pmesh, ax=ax)
-        cbar.set_label("TQG [kg/m^2]")
+        cbar.set_label("max precipitation rate (mm/h)")
 
         # limit to swiss lat /lon
         ax.set_xlim(5, 11)
