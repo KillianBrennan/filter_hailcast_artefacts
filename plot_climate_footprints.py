@@ -19,7 +19,7 @@ def main():
     footprint_files = [f for f in footprint_files if f.endswith(".nc")]
     # only the ones that start with ffd2021
     footprint_files = [f for f in footprint_files if f.startswith("lffd2021")]
-    # footprint_files = footprint_files[-20:]
+    footprint_files = footprint_files[11:]
     plotdir = os.path.join(root_path, "plots", "potential_artefacts")
     if not os.path.exists(plotdir):
         os.makedirs(plotdir)
@@ -40,6 +40,8 @@ def main():
             print("No file found for " + day)
             continue
 
+        diff = footprint.DHAIL_MX.squeeze() - filtered.DHAIL_MX_filtered.max(dim="time")
+        n_artefacts = np.sum(diff.values > 5)
         # plot
         fig, ax = plt.subplots(1, 1, figsize=(20, 16))
         pmesh = ax.pcolormesh(
@@ -62,19 +64,34 @@ def main():
             footprint.rlon,
             footprint.rlat,
             footprint.DHAIL_MX.squeeze(),
-            levels=[1],
+            levels=[5],
             colors="red",
             linewidths=0.5,
+        )
+
+        # print number of pixels with artefacts
+        if n_artefacts > 0:
+            print("n_artefacts: " + str(n_artefacts))
+        # add text to plot
+        ax.text(
+            0.01,
+            0.99,
+            "n_artefacts: " + str(n_artefacts),
+            transform=ax.transAxes,
+            fontsize=10,
+            verticalalignment="top",
+            horizontalalignment="left",
         )
 
         ax.contourf(
             filtered.rlon,
             filtered.rlat,
-            filtered.DHAIL_MX.max(dim="time") - footprint.DHAIL_MX.squeeze(),
+            diff,
             levels=[5, 50],
             colors="tab:orange",
             alpha=0.5,
         )
+
         # add colorbar
         cbar = fig.colorbar(pmesh, ax=ax)
         cbar.set_label("max precipitation rate (mm/h)")

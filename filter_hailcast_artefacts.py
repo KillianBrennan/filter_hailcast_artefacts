@@ -53,15 +53,15 @@ def filter_hailcast_artefacts(inpath, outpath, start_day, end_day):
         original = xr.open_dataset(os.path.join(inpath,'lffd'+day_str+'_0606.nz'))
         filtered = apply_filter(original)
 
-        filtered.DHAIL_MX.to_netcdf(os.path.join(outpath, 'lffd'+day_str+'_0606.nc'))
+        filtered.DHAIL_MX_filtered.to_netcdf(os.path.join(outpath, 'lffd'+day_str+'_0606.nc'))
 
     return
 
 
 def apply_filter(
     ds,
-    threshold=1,  # mm/h
-    kernel_size=12,  # km
+    threshold=5,  # mm/h
+    kernel_size=15,  # km
     temporal_ambiguity=2,  # time steps
 ):
     '''
