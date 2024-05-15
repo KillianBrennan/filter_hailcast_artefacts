@@ -9,6 +9,7 @@ def main():
     root_path = "/home/kbrennan/phd/data/climate/present"
     footprint_path = os.path.join(root_path, "hail_footprints")
     horizontal_path = os.path.join(root_path, "5min_2D")
+    filtered_path = os.path.join(root_path, "filtered_hailcast")
     const_path = os.path.join(root_path, "lffd20101019000000c.nc")
     const = xr.open_dataset(const_path)
 
@@ -18,7 +19,7 @@ def main():
     footprint_files = [f for f in footprint_files if f.endswith(".nc")]
     # only the ones that start with ffd2021
     footprint_files = [f for f in footprint_files if f.startswith("lffd2021")]
-    footprint_files = footprint_files[-20:]
+    # footprint_files = footprint_files[-20:]
     plotdir = os.path.join(root_path, "plots", "potential_artefacts")
     if not os.path.exists(plotdir):
         os.makedirs(plotdir)
@@ -27,6 +28,9 @@ def main():
         day = f.split("_")[0][4:]
         print(day)
         footprint = xr.open_dataset(os.path.join(footprint_path, f))
+        filtered = xr.open_dataset(
+            os.path.join(filtered_path, "lffd" + day + "_0606.nc")
+        )
 
         try:
             horizontal = xr.open_mfdataset(
@@ -37,40 +41,50 @@ def main():
             continue
 
         # plot
-        fig, ax = plt.subplots(1, 1, figsize=(12, 8))
+        fig, ax = plt.subplots(1, 1, figsize=(20, 16))
         pmesh = ax.pcolormesh(
-            horizontal.lon,
-            horizontal.lat,
-            horizontal.TOT_PREC.max(dim="time")*60/5,
+            horizontal.rlon,
+            horizontal.rlat,
+            horizontal.TOT_PREC.max(dim="time") * 60 / 5,
             vmax=20,
             vmin=0,
             cmap="Blues",
         )
         ax.contour(
-            const.lon,
-            const.lat,
+            const.rlon,
+            const.rlat,
             const.HSURF.squeeze(),
-            levels=[2000, 3000],
+            levels=[2000],
             colors="black",
-            linestyles=["dashed", "solid"],
+            linewidths=0.5,
         )
         ax.contour(
-            footprint.lon,
-            footprint.lat,
+            footprint.rlon,
+            footprint.rlat,
             footprint.DHAIL_MX.squeeze(),
             levels=[1],
             colors="red",
+            linewidths=0.5,
+        )
+
+        ax.contourf(
+            filtered.rlon,
+            filtered.rlat,
+            filtered.DHAIL_MX.max(dim="time") - footprint.DHAIL_MX.squeeze(),
+            levels=[5, 50],
+            colors="tab:orange",
+            alpha=0.5,
         )
         # add colorbar
         cbar = fig.colorbar(pmesh, ax=ax)
         cbar.set_label("max precipitation rate (mm/h)")
 
         # limit to swiss lat /lon
-        ax.set_xlim(5, 11)
-        ax.set_ylim(45, 48)
+        # ax.set_xlim(5, 11)
+        # ax.set_ylim(45, 48)
 
         ax.set_title(day)
-        plt.savefig(os.path.join(plotdir, day + ".png"))
+        plt.savefig(os.path.join(plotdir, day + ".png"), dpi=600)
 
 
 if __name__ == "__main__":
