@@ -13,6 +13,16 @@ algorithm working principle
     apply resulting mask
 ---------------------------------------------------------
 IN
+path to the input directory
+path to the output directory
+start day in format YYYYMMDD
+end day in format YYYYMMDD
+
+optional:
+threshold for hailcast data in mm/h (default 2 mm/h)
+kernel size for binary dilatation in km (default 17 km)
+number of time steps to consider before and after current time step in time steps (default 4)
+
 
 ---------------------------------------------------------
 OUT
