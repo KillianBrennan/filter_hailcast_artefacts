@@ -94,7 +94,7 @@ def filter_hailcast_artefacts(
         else:
             print('warning: last day in time range, filling with high precip value - no hail will be filtered for the last n=spacial_ambiguity time steps')
             # for the last day, the next day does not exist, fill with high precip value so no hail is filtered
-            tomorrow = xr.full_like(today, 100) 
+            tomorrow = xr.full_like(today, 100)
 
         combined = xr.concat(
             [
